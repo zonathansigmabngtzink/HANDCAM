@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handcam Full Screen</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Video disembunyikan, kita hanya render di canvas */
+        video {
+            display: none;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* object-fit: cover memastikan video tidak gepeng/penyok */
+            object-fit: cover;
+            /* Mirroring agar gerakan natural seperti cermin */
+            transform: scaleX(-1);
+        }
+
+        /* Loading indicator simpel */
+        #loading {
+            position: absolute;
+            color: white;
+            font-family: sans-serif;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <div id="loading">Memuat Kamera...</div>
+        <video id="input_video"></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingMsg = document.getElementById('loading');
+
+        function onResults(results) {
+            // Sembunyikan pesan loading saat tangan atau gambar pertama kali muncul
+            if (loadingMsg) loadingMsg.style.display = 'none';
+
+            // Menyesuaikan resolusi internal canvas dengan resolusi video asli
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Gambar feed kamera ke canvas
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Deteksi dan gambar 21 titik tangan
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Gambar koneksi antar sendi (garis putih tipis)
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                        color: '#FFFFFF',
+                        lineWidth: 2
+                    });
+
+                    // Gambar 21 titik sendi (bulatan biru terang)
+                    drawLandmarks(canvasCtx, landmarks, {
+                        color: '#00EAFF',
+                        lineWidth: 1,
+                        radius: 4
+                    });
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        // Konfigurasi performa tinggi
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 0, // 0 paling ringan/cepat, 1 lebih akurat
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // Memulai kamera dengan resolusi optimal
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        camera.start();
+
+        // Update canvas saat resize window agar tetap full screen
+        window.addEventListener('resize', () => {
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+        });
+    </script>
+</body>
+</html>
